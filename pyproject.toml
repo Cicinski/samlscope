@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samlscope"
+version = "0.1.0"
+description = "Decode, verify and security-lint SAML messages locally. Nothing leaves your machine."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "samlscope contributors" }]
+keywords = ["saml", "sso", "security", "identity", "decoder", "xml-signature"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: System :: Systems Administration :: Authentication/Directory",
+  "Environment :: Console",
+]
+dependencies = [
+  "lxml>=5.3,<7",
+  "signxml>=4.0,<5",
+  "cryptography>=43",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.8,<7"]
+test = ["pytest>=8", "pytest-qt>=4.4", "PySide6-Essentials>=6.8,<7"]
+
+[project.scripts]
+samlscope = "samlscope.cli:main"
+
+[project.gui-scripts]
+samlscope-gui = "samlscope.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

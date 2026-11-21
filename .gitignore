@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+# never commit captured SAML messages: they contain personal data
+*.b64
+captures/
+
+# PyInstaller writes a spec file to the root when run ad hoc; the real one is packaging/samlscope.spec
+/*.spec
