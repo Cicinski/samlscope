@@ -14,12 +14,13 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor, QFont, QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-    QSplitter, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+    QSplitter, QTabWidget, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from . import __version__
 from .analyze import analyze
+from .certexport import FORMATS, ExportError, export, suggested_filename, unique_certificates
 
 SEVERITY_COLORS = {"high": "#d92d20", "medium": "#c4730a", "low": "#2e78c7", "info": "#7a8494"}
 MAX_FILE = 5 * 1024 * 1024
@@ -112,10 +113,32 @@ class MainWindow(QMainWindow):
         self.xml.setFont(_mono())
         self.xml.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
+        self.signatures.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.signatures.customContextMenuRequested.connect(self._signature_menu)
+        self.signatures.itemSelectionChanged.connect(self._update_cert_buttons)
+
+        self.copy_cert_btn = QToolButton()
+        self.copy_cert_btn.setText("Copy certificate")
+        self.copy_cert_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.copy_cert_btn.setMenu(self._copy_menu(self))
+        self.save_cert_btn = QPushButton("Save certificate…")
+        self.save_cert_btn.clicked.connect(lambda: self.save_certificate())
+        self.cert_hint = _plain_label("")
+        cert_bar = QHBoxLayout()
+        cert_bar.addWidget(self.copy_cert_btn)
+        cert_bar.addWidget(self.save_cert_btn)
+        cert_bar.addWidget(self.cert_hint, 1)
+        sig_tab = QWidget()
+        sl = QVBoxLayout(sig_tab)
+        sl.setContentsMargins(0, 4, 0, 0)
+        sl.addLayout(cert_bar)
+        sl.addWidget(self.signatures)
+        self._update_cert_buttons()
+
         self.tabs = QTabWidget()
         self.tabs.addTab(self.findings, "Findings")
         self.tabs.addTab(self.summary, "Summary")
-        self.tabs.addTab(self.signatures, "Signatures")
+        self.tabs.addTab(sig_tab, "Signatures")
         self.tabs.addTab(self.xml, "XML")
 
         split = QSplitter(Qt.Orientation.Vertical)
@@ -133,6 +156,7 @@ class MainWindow(QMainWindow):
                                 ("Trust &certificate…", self.load_cert, None),
                                 ("Trust &metadata…", self.load_metadata, None),
                                 ("&Export report (JSON)…", self.export, QKeySequence.StandardKey.Save),
+                                ("Export ce&rtificate…", lambda: self.save_certificate(), None),
                                 (None, None, None),
                                 ("&Quit", self.close, QKeySequence.StandardKey.Quit)]:
             if text is None:
@@ -187,6 +211,82 @@ class MainWindow(QMainWindow):
             Path(path).write_text(json.dumps(self.result, indent=2))
             self.statusBar().showMessage(f"Report saved to {path} (it contains the decoded message: handle with care)")
 
+    # --- certificate export --------------------------------------------------------------------
+    def _certificates(self) -> list[dict]:
+        return unique_certificates(self.result["signatures"]) if self.result and self.result.get("ok") else []
+
+    def selected_certificate(self) -> dict | None:
+        """The certificate of the selected signature, or the only one in the message."""
+        item = self.signatures.currentItem()
+        while item is not None and item.parent() is not None:
+            item = item.parent()
+        if item is not None and item.data(0, Qt.ItemDataRole.UserRole) is not None:
+            sig = self.result["signatures"][item.data(0, Qt.ItemDataRole.UserRole)]
+            if sig.get("embedded_certificate"):
+                return sig["embedded_certificate"]
+        certs = self._certificates()
+        return certs[0]["certificate"] if len(certs) == 1 else None
+
+    def _update_cert_buttons(self) -> None:
+        certs = self._certificates()
+        cert = self.selected_certificate() if certs else None
+        for w in (self.copy_cert_btn, self.save_cert_btn):
+            w.setEnabled(cert is not None)
+        if not certs:
+            self.cert_hint.setText("No certificate embedded in this message." if self.result else "")
+        elif cert is None:
+            self.cert_hint.setText(f"{len(certs)} different certificates: select a signature first.")
+        else:
+            self.cert_hint.setText(f"{cert.get('subject')} · SHA-256 {str(cert.get('sha256_fingerprint'))[:23]}…  "
+                                   "(untrusted: compare with the IdP's metadata)")
+
+    def _copy_menu(self, parent) -> QMenu:
+        menu = QMenu(parent)
+        for fmt in ("pem", "b64", "raw"):
+            menu.addAction(f"Copy as {FORMATS[fmt]['label']}", lambda f=fmt: self.copy_certificate(f))
+        return menu
+
+    def _signature_menu(self, pos) -> None:
+        if self.selected_certificate() is None:
+            return
+        menu = self._copy_menu(self.signatures)
+        menu.addSeparator()
+        menu.addAction("Save certificate…", lambda: self.save_certificate())
+        menu.exec(self.signatures.viewport().mapToGlobal(pos))
+
+    def copy_certificate(self, fmt: str) -> None:
+        cert = self.selected_certificate()
+        if cert is None:
+            return
+        try:
+            QApplication.clipboard().setText(export(cert, fmt).decode())
+        except ExportError as e:
+            QMessageBox.warning(self, "Cannot export", str(e))
+            return
+        self.statusBar().showMessage(f"Copied certificate ({FORMATS[fmt]['label']}): {cert.get('subject')}")
+
+    def save_certificate(self, path: str | None = None, fmt: str | None = None) -> str | None:
+        cert = self.selected_certificate()
+        if cert is None:
+            if self._certificates():
+                QMessageBox.information(self, "Select a signature", "This message contains several certificates. "
+                                        "Select a signature on the Signatures tab first.")
+            return None
+        if path is None:
+            filters = {f"{FORMATS[f]['label']} (*{FORMATS[f]['ext']})": f for f in ("pem", "der", "b64", "raw")}
+            path, chosen = QFileDialog.getSaveFileName(self, "Save certificate", suggested_filename(cert, "pem"),
+                                                       ";;".join(filters))
+            if not path:
+                return None
+            fmt = filters.get(chosen, "pem")
+        try:
+            Path(path).write_bytes(export(cert, fmt or "pem"))
+        except ExportError as e:
+            QMessageBox.warning(self, "Cannot export", str(e))
+            return None
+        self.statusBar().showMessage(f"Certificate saved as {FORMATS[fmt or 'pem']['label']}: {path}")
+        return path
+
     def dragEnterEvent(self, e) -> None:  # noqa: N802 - Qt API
         if e.mimeData().hasUrls():
             e.acceptProposedAction()
@@ -203,6 +303,7 @@ class MainWindow(QMainWindow):
             w.clear()
         self.xml.clear()
         self.result = None
+        self._update_cert_buttons()
         self.statusBar().showMessage("Cleared.")
 
     def about(self) -> None:
@@ -220,6 +321,7 @@ class MainWindow(QMainWindow):
             return
         self.result = analyze(text, cert=self.cert_text, metadata=self.metadata_text)
         self.show_result(self.result)
+        self._update_cert_buttons()
 
     def show_result(self, r: dict) -> None:
         for w in (self.findings, self.summary, self.signatures):
@@ -274,9 +376,10 @@ class MainWindow(QMainWindow):
         self.summary.expandAll()
 
         # signatures
-        for g in r["signatures"]:
+        for index, g in enumerate(r["signatures"]):
             node = _item(self.signatures, f"on {g['on']} {g['on_id'] or ''}",
                          f"{g['signature_algorithm']} / {', '.join(g['digest_algorithms'])}")
+            node.setData(0, Qt.ItemDataRole.UserRole, index)
             _item(node, "References", ", ".join(g["references"]))
             cert = g.get("embedded_certificate") or {}
             for k in ("subject", "issuer", "key", "not_before", "not_after", "sha256_fingerprint"):

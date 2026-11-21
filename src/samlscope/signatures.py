@@ -65,9 +65,15 @@ def describe(root: etree._Element) -> list[dict]:
             "digest_algorithms": digests,
             "weak_algorithm": any(w in (a or "") for w in WEAK_ALGS
                                   for a in [_short(method.get("Algorithm")) if method is not None else ""] + digests),
-            "embedded_certificate": certificate_info(cert_el.text) if cert_el is not None and cert_el.text else None,
+            "embedded_certificate": _embedded(cert_el.text) if cert_el is not None and cert_el.text else None,
         })
     return out
+
+
+def _embedded(raw: str) -> dict:
+    """Certificate details plus the material needed to export it: the exact text from the message
+    and the whitespace-free base64. Embedded certificates are untrusted: exporting is not trusting."""
+    return certificate_info(raw) | {"raw": raw, "base64": re.sub(r"\s+", "", raw)}
 
 
 def load_trusted_certs(cert_text: str | None = None, metadata_text: str | None = None) -> list[str]:

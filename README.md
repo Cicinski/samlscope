@@ -9,6 +9,7 @@
 - **Decodes anything you paste:** HTTP-POST (base64), HTTP-Redirect (base64 + DEFLATE), a full redirect URL, a form body, URL-encoded values, or raw XML. It detects the format automatically.
 - **Explains the message:** issuer, destination, `InResponseTo`, status, subject and NameID format, audience, validity window, authentication context, attributes, AuthnRequest details.
 - **Verifies signatures** against a certificate or the IdP/SP **metadata** you trust, and shows **what each signature actually covers**, which is the key to spotting signature-wrapping attacks.
+- **Exports the embedded signing certificate** in the format you need: exactly as in the message, base64 on one line (for admin consoles), PEM, or DER (`.cer`). When the Response and Assertion share a certificate, it is offered once. Exporting is not trusting: compare the fingerprint with the IdP's published metadata.
 - **Security lint:**
 
 | Severity | Checks |
@@ -23,7 +24,7 @@
 
 Download `samlscope-linux-x86_64` or `samlscope-windows-x86_64.exe` from the CI artifacts or releases and run it. No installation and no Python needed.
 
-Paste a message (or drop a file) and press **Ctrl+Enter**. To verify signatures, use **Trust metadata…** or **Trust certificate…**. **File → Export report** saves JSON. The report contains the decoded message, so handle it with care.
+Paste a message (or drop a file) and press **Ctrl+Enter**. On the **Signatures** tab, use **Copy certificate** / **Save certificate…** (or right-click a signature) to export its certificate. To verify signatures, use **Trust metadata…** or **Trust certificate…**. **File → Export report** saves JSON. The report contains the decoded message, so handle it with care.
 
 From source:
 ```bash
@@ -38,6 +39,8 @@ pip install .
 samlscope message.b64                       # file, '-' for stdin, or the value itself
 samlscope --metadata idp-metadata.xml message.b64
 samlscope --json < message.b64 | jq .findings
+samlscope --certs pem message.b64 > idp.pem   # embedded certificate: pem | b64 | raw (to stdout)
+samlscope --certs der --certs-out ./certs message.b64
 ```
 Exit codes: `0` no high-severity findings, `1` could not decode / refused, `2` high-severity finding or invalid signature, so you can use it as a CI gate.
 

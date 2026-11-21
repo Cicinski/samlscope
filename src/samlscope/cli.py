@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import __version__
 from .analyze import analyze
+from .certexport import FORMATS, ExportError, export, suggested_filename, unique_certificates
 
 SEV_COLOR = {"high": "31;1", "medium": "33;1", "low": "36", "info": "2"}
 
@@ -104,12 +105,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.add_argument("--xml", action="store_true", help="also print the pretty-printed XML")
     p.add_argument("--no-color", action="store_true")
+    p.add_argument("--certs", choices=list(FORMATS),
+                   help="only export the certificate(s) embedded in the signatures: pem, der, b64 (one line) "
+                        "or raw (exactly as in the message). Printed to stdout unless --certs-out is given")
+    p.add_argument("--certs-out", metavar="DIR", help="write exported certificates to this directory")
     p.add_argument("--version", action="version", version=f"samlscope {__version__}")
     args = p.parse_args(argv)
 
     r = analyze(_read(args.input),
                 cert=Path(args.cert).read_text() if args.cert else None,
                 metadata=Path(args.metadata).read_text() if args.metadata else None)
+    if args.certs or args.certs_out:
+        return _export_certs(r, args.certs or "pem", args.certs_out)
     if args.json:
         print(json.dumps(r, indent=2))
     else:
@@ -118,6 +125,36 @@ def main(argv: list[str] | None = None) -> int:
     if not r["ok"]:
         return 1
     return 2 if any(f["severity"] == "high" for f in r["findings"]) else 0
+
+
+def _export_certs(r: dict, fmt: str, out_dir: str | None) -> int:
+    if not r["ok"]:
+        print(f"error: {r['error']}", file=sys.stderr)
+        return 1
+    certs = unique_certificates(r["signatures"])
+    if not certs:
+        print("no certificate is embedded in this message's signatures", file=sys.stderr)
+        return 1
+    print("note: embedded certificates are untrusted; compare the fingerprint with the IdP's published metadata "
+          "before relying on it", file=sys.stderr)
+    try:
+        if out_dir is None:
+            if FORMATS[fmt]["binary"]:
+                print("error: DER is binary; use --certs-out DIR to write files", file=sys.stderr)
+                return 1
+            for c in certs:
+                text = export(c["certificate"], fmt).decode()
+                sys.stdout.write(text if text.endswith("\n") else text + "\n")
+            return 0
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        for c in certs:
+            path = Path(out_dir) / suggested_filename(c["certificate"], fmt)
+            path.write_bytes(export(c["certificate"], fmt))
+            print(f"{path}  ({c['certificate'].get('subject')}, used by: {', '.join(c['used_by'])})")
+        return 0
+    except ExportError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

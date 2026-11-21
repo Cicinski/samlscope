@@ -153,3 +153,62 @@ def test_cli_text_report(idp, tmp_path):
     p = subprocess.run([sys.executable, "-m", "samlscope.cli", "--cert", str(cert), "--no-color", "-"],
                        input=sign_assertion(response_xml(), idp), capture_output=True, text=True)
     assert "eve@globex.test" in p.stdout and "VALID" in p.stdout
+
+
+# --- certificate export ------------------------------------------------------------------
+
+def _embedded(idp):
+    from samlscope.certexport import unique_certificates
+    r = analyze(sign_assertion(response_xml(), idp), now=NOW)
+    certs = unique_certificates(r["signatures"])
+    assert len(certs) == 1
+    return certs[0]["certificate"]
+
+
+def test_certificate_export_formats_round_trip(idp):
+    from cryptography import x509
+    from samlscope.certexport import export
+    cert = _embedded(idp)
+    original = x509.load_pem_x509_certificate(idp[1].encode())
+
+    pem = export(cert, "pem")
+    assert pem.startswith(b"-----BEGIN CERTIFICATE-----\n") and all(len(l) <= 64 for l in pem.splitlines())
+    assert x509.load_pem_x509_certificate(pem) == original
+    assert x509.load_der_x509_certificate(export(cert, "der")) == original
+    one_line = export(cert, "b64").decode()
+    assert one_line.count("\n") == 1 and " " not in one_line
+    assert export(cert, "raw").decode() == cert["raw"]        # byte-for-byte as in the message
+
+
+def test_raw_export_preserves_the_message_text_exactly():
+    from samlscope.certexport import export
+    weird = "MIIB\n  AAAA\n\tBBBB"
+    assert export({"raw": weird, "base64": "MIIBAAAABBBB"}, "raw").decode() == weird
+
+
+def test_same_certificate_on_response_and_assertion_is_offered_once():
+    from samlscope.certexport import unique_certificates
+    sig = {"on": "Response", "on_id": "_r", "embedded_certificate": {"base64": "AAAA", "raw": "AAAA"}}
+    assert len(unique_certificates([sig, {**sig, "on": "Assertion", "on_id": "_a"}])) == 1
+
+
+def test_garbage_certificate_only_exports_raw():
+    import pytest
+    from samlscope.certexport import ExportError, export
+    bad = {"raw": "not base64 !!", "base64": "notbase64!!"}
+    assert export(bad, "raw") == b"not base64 !!"
+    with pytest.raises(ExportError):
+        export(bad, "pem")
+
+
+def test_cli_exports_certificates(idp, tmp_path):
+    from cryptography import x509
+    signed = sign_assertion(response_xml(), idp)
+    p = subprocess.run([sys.executable, "-m", "samlscope.cli", "--certs", "pem", "-"], input=signed,
+                       capture_output=True, text=True)
+    assert p.returncode == 0 and x509.load_pem_x509_certificate(p.stdout.encode())
+    assert "untrusted" in p.stderr
+    p = subprocess.run([sys.executable, "-m", "samlscope.cli", "--certs", "der", "--certs-out", str(tmp_path), "-"],
+                       input=signed, capture_output=True, text=True)
+    files = list(tmp_path.glob("*.cer"))
+    assert p.returncode == 0 and len(files) == 1 and files[0].name.startswith("Test-IdP-signing-")

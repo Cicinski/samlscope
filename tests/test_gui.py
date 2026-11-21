@@ -66,3 +66,23 @@ def test_clear_wipes_everything(window):
     window.run()
     window.clear()
     assert window.input.toPlainText() == "" and window.findings.topLevelItemCount() == 0 and window.result is None
+
+
+def test_copy_and_save_embedded_certificate(window, idp, tmp_path):
+    from cryptography import x509
+    from PySide6.QtWidgets import QApplication
+    window.input.setPlainText(sign_assertion(response_xml(), idp))
+    window.run()
+    assert window.save_cert_btn.isEnabled()
+
+    window.copy_certificate("pem")
+    assert QApplication.clipboard().text().startswith("-----BEGIN CERTIFICATE-----")
+
+    saved = window.save_certificate(str(tmp_path / "idp.cer"), "der")
+    assert x509.load_der_x509_certificate(open(saved, "rb").read()) == x509.load_pem_x509_certificate(idp[1].encode())
+
+
+def test_certificate_buttons_disabled_without_certificate(window):
+    window.input.setPlainText(post_binding(unsigned(response_xml())))
+    window.run()
+    assert not window.save_cert_btn.isEnabled() and "No certificate" in window.cert_hint.text()
