@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -79,7 +80,7 @@ def test_copy_and_save_embedded_certificate(window, idp, tmp_path):
     assert QApplication.clipboard().text().startswith("-----BEGIN CERTIFICATE-----")
 
     saved = window.save_certificate(str(tmp_path / "idp.cer"), "der")
-    assert x509.load_der_x509_certificate(open(saved, "rb").read()) == x509.load_pem_x509_certificate(idp[1].encode())
+    assert x509.load_der_x509_certificate(Path(saved).read_bytes()) == x509.load_pem_x509_certificate(idp[1].encode())
 
 
 def test_certificate_buttons_disabled_without_certificate(window):

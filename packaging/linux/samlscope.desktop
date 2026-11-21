@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=samlscope
-Comment=Decode, verify and security-check SAML messages locally
-Exec=samlscope %f
-Terminal=false
-Categories=Development;Security;Network;
-Keywords=SAML;SSO;identity;decoder;

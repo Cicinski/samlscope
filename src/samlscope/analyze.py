@@ -1,4 +1,4 @@
-"""One entry point used by the CLI, the local web UI and as a library."""
+"""One entry point used by the CLI, the desktop app and as a library."""
 from __future__ import annotations
 
 import datetime as dt

@@ -80,7 +80,7 @@ def lint(root: etree._Element, summary: dict, signatures: list[dict], now: dt.da
                           status.get("message") or "The IdP did not authenticate the user."))
 
     # --- per-assertion checks --------------------------------------------------------------
-    for a_el, a in zip(root.iter(f"{{{NS['saml']}}}Assertion"), assertions):
+    for a_el, a in zip(root.iter(f"{{{NS['saml']}}}Assertion"), assertions, strict=True):
         name_id = a_el.find("saml:Subject/saml:NameID", NS)
         if name_id is not None and any(isinstance(c, etree._Comment) for c in name_id.iter()):
             out.append(_f("comment-in-nameid", HIGH, "XML comment inside NameID",

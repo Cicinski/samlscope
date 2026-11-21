@@ -10,12 +10,16 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "samlscope contributors" }]
-keywords = ["saml", "sso", "security", "identity", "decoder", "xml-signature"]
+keywords = ["saml", "sso", "security", "identity", "decoder", "xml-signature", "certificate", "desktop"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Security",
   "Topic :: System :: Systems Administration :: Authentication/Directory",
   "Environment :: Console",
+  "Environment :: X11 Applications :: Qt",
+  "Environment :: Win32 (MS Windows)",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
 ]
 dependencies = [
   "lxml>=5.3,<7",
