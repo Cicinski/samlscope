@@ -1,0 +1,37 @@
+# Tests on every push; desktop executables on tags (Linux in Docker, Windows on GitLab's hosted Windows runners).
+stages: [test, build]
+
+test:
+  stage: test
+  image: python:3.12-slim
+  variables: { QT_QPA_PLATFORM: offscreen }
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libglib2.0-0
+    - pip install -e ".[test]"
+    - pytest -q
+
+build-linux:
+  stage: build
+  image: docker:27
+  services: [docker:27-dind]
+  rules: [{ if: $CI_COMMIT_TAG }]
+  script:
+    - docker build -f packaging/Dockerfile.linux -t samlscope-build .
+    - docker create --name out samlscope-build && docker cp out:/src/dist/samlscope samlscope-linux-x86_64
+  artifacts: { paths: [samlscope-linux-x86_64] }
+
+build-windows:
+  stage: build
+  tags: [saas-windows-medium-amd64]
+  rules: [{ if: $CI_COMMIT_TAG }]
+  variables: { QT_QPA_PLATFORM: offscreen }
+  script:
+    - choco install python312 -y --no-progress
+    - $env:PATH = "C:\Python312;C:\Python312\Scripts;$env:PATH"
+    - python -m pip install . -r packaging/requirements-build.txt
+    - python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging/samlscope.spec
+    # GUI executables don't block PowerShell: wait explicitly and check the exit code
+    - $p = Start-Process -FilePath .\dist\samlscope.exe -ArgumentList "--smoke-test" -Wait -PassThru
+    - if ($p.ExitCode -ne 0) { throw "smoke test failed ($($p.ExitCode))" }
+    - Move-Item dist\samlscope.exe samlscope-windows-x86_64.exe
+  artifacts: { paths: [samlscope-windows-x86_64.exe] }

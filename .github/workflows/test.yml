@@ -1,0 +1,51 @@
+name: test-and-build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions: { contents: read }
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    env: { QT_QPA_PLATFORM: offscreen }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: pip install -e ".[test]" && pytest -q
+
+  desktop-build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-22.04, artifact: samlscope-linux-x86_64, file: samlscope }
+          - { os: windows-latest, artifact: samlscope-windows-x86_64.exe, file: samlscope.exe }
+    runs-on: ${{ matrix.os }}
+    env: { QT_QPA_PLATFORM: offscreen }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: pip install . -r packaging/requirements-build.txt
+      - run: python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging/samlscope.spec
+      - name: Smoke test the packaged app (Linux)
+        if: runner.os == 'Linux'
+        run: ./dist/${{ matrix.file }} --smoke-test
+      - name: Smoke test the packaged app (Windows; GUI exes don't block, so wait and check the exit code)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\dist\${{ matrix.file }} -ArgumentList "--smoke-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "smoke test failed ($($p.ExitCode))" }
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.artifact }}", path: "dist/${{ matrix.file }}" }
