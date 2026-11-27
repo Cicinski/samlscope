@@ -62,4 +62,10 @@ QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q
 Tests generate real signed SAML with throwaway keys (no captured data from real systems): valid, wrong-key and tampered signatures, signature wrapping, comment injection, XXE and entity expansion, SHA-1, replay hygiene, plus the desktop UI (plain-text rendering, refusal of hostile input).
 
 ## Licence
-MIT. Qt for Python (PySide6) is used under the LGPL v3.
+Copyright (c) 2026 Grecu Cosmin.
+
+samlscope is free software: you can use, study, share and modify it under the terms of the [GNU General Public License v3.0 or later](LICENSE). Anything you distribute that is based on samlscope must also be released under the GPL, with its source code.
+
+Versions up to and including commit `8ddc5ae` were released under the MIT licence.
+
+Qt for Python (PySide6) is used under the LGPL v3.

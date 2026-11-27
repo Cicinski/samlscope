@@ -7,9 +7,9 @@ name = "samlscope"
 version = "0.1.0"
 description = "Decode, verify and security-lint SAML messages locally. Nothing leaves your machine."
 readme = "README.md"
-license = "MIT"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.10"
-authors = [{ name = "samlscope contributors" }]
+authors = [{ name = "Grecu Cosmin" }]
 keywords = ["saml", "sso", "security", "identity", "decoder", "xml-signature", "certificate", "desktop"]
 classifiers = [
   "Programming Language :: Python :: 3",

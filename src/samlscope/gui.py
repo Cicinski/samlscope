@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         box.setWindowTitle("About samlscope")
         box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(f"samlscope {__version__}\n\nDecode, verify and security-check SAML messages locally.\n"
-                    "No network access. Nothing is uploaded or stored.\n\nMIT licence.")
+                    "No network access. Nothing is uploaded or stored.\n\nCopyright (c) 2026 Grecu Cosmin\nLicensed under the GNU GPL v3 or later.")
         box.exec()
 
     # --- analysis ----------------------------------------------------------------------------------
